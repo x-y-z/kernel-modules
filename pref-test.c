@@ -27,6 +27,8 @@ static int __init fake_init(void)
 
 	printk(KERN_INFO "Allocating memory\n");
 	data = vzalloc(PAGE_SIZE);
+	if (!data)
+		goto out;
 
 	/* Calculate PTE locations */
 	mm = get_task_mm(current);
@@ -80,6 +82,8 @@ static int __init fake_init(void)
 	/* Enable interrupts */
 	local_irq_restore(irqs);
 
+	/* Print results */
+
 	/* Clean up counters */
 
 out_unmappte_nl:
@@ -91,6 +95,7 @@ out_putmm:
 out_free:
 	printk(KERN_INFO "Freeing allocated memory\n");
 	vfree(data);
+out:
 	return 0;
 }
 
