@@ -95,6 +95,8 @@ static int __init bench_init(void)
 		goto out_unmappte;
 	}
 
+	pr_info("PTE: %p\n", pte);
+	pr_info("PTE_NL: %p\n", pte_nl);
 
 	/* Disable interrupts */
 	cpu = get_cpu();
