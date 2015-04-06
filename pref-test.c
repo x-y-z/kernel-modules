@@ -90,7 +90,7 @@ static int __init bench_init(void)
 		pte_nl = pte_offset_map(pmd, (uintptr_t)(data + 8 * PAGE_SIZE));
 	else
 		pte_nl = pte_offset_map(pmd, (uintptr_t)(data - 8 * PAGE_SIZE));
-	if (!pte_nl || pte_none(*pte_nl)) {
+	if (!pte_nl) {
 		pr_err("Bad or missing PTE_NL\n");
 		goto out_unmappte;
 	}
