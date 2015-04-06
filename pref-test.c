@@ -116,7 +116,7 @@ static int __init bench_init(void)
 	cache_misses_end = perf_event_read_value(cache_miss, &enabled, &running);
 
 	/* Print results */
-	printk(KERN_INFO "Cache misses: %lu (%lu - %lu)\n",
+	printk(KERN_INFO "Cache misses: %llu (%llu - %llu)\n",
 		cache_misses_end - cache_misses_begin,
 		cache_misses_end, cache_misses_begin);
 
