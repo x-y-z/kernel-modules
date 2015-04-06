@@ -1,6 +1,7 @@
 #include <linux/init.h>
 #include <linux/mm.h>
 #include <linux/module.h>
+#include <linux/perf_event.h>
 #include <linux/sched.h>
 #include <linux/vmalloc.h>
 
@@ -16,17 +17,30 @@ MODULE_LICENSE("GPL");
 static uint iterations = 1000;
 module_param(iterations, uint, S_IRUGO);
 
+static struct perf_event_attr cache_miss_event_attr = {
+        .type           = PERF_TYPE_HARDWARE,
+        .config         = PERF_COUNT_HW_CACHE_MISSES,
+        .size           = sizeof(struct perf_event_attr),
+        .pinned         = 1,
+        .disabled       = 1,
+};
+
 static int __init bench_init(void)
 {
 	char * data;
 	uint i;
 	char res = 0;
 	ulong irqs;
+	int cpu;
 	pgd_t *pgd;
 	pud_t *pud;
 	pmd_t *pmd;
 	pte_t *pte, *pte_nl;
+
 	struct mm_struct *mm;
+	struct perf_event *cache_miss;
+
+	u64 cache_misses_begin, cache_misses_end, enabled, running;
 
 	printk(KERN_INFO "Allocating memory\n");
 	data = vzalloc(PAGE_SIZE);
@@ -64,12 +78,24 @@ static int __init bench_init(void)
 	if (!pte_nl || pte_none(*pte_nl))
 		goto out_unmappte;
 
+
+	cpu = smp_processor_id();
 	/* Setup TLB miss, and cache miss counters */
+	cache_miss = perf_event_create_kernel_counter(&cache_miss_event_attr,
+		cpu, NULL, NULL, NULL);
+	if (IS_ERR(cache_miss))
+		goto out_unmappte_nl;
 
 	/* Disable interrupts */
 	local_irq_save(irqs);
 
+	if (smp_processor_id() != cpu)
+		perf_pmu_migrate_context(cache_miss->pmu, cpu, smp_processor_id());
+
+	perf_event_enable(cache_miss);
+
 	/* Read TLB miss and Cache miss counters */
+	cache_misses_begin = perf_event_read_value(cache_miss, &enabled, &running);
 
 	for (i = 0; i < iterations; ++i) {
 		/* Flush TLB entry */
@@ -87,13 +113,20 @@ static int __init bench_init(void)
 	}
 
 	/* Read the counters again */
-
-	/* Enable interrupts */
-	local_irq_restore(irqs);
+	cache_misses_end = perf_event_read_value(cache_miss, &enabled, &running);
 
 	/* Print results */
+	printk(KERN_INFO "Cache misses: %lu (%lu - %lu)\n",
+		cache_misses_end - cache_misses_begin,
+		cache_misses_end, cache_misses_begin);
 
 	/* Clean up counters */
+	perf_event_disable(cache_miss);
+
+out_irq_enable:
+	/* Enable interrupts */
+	local_irq_restore(irqs);
+	perf_event_release_kernel(cache_miss);
 
 out_unmappte_nl:
 	pte_unmap(pte_nl);
