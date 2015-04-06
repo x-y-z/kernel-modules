@@ -27,14 +27,14 @@ static struct perf_event_attr cache_miss_event_attr = {
 
 static int __init bench_init(void)
 {
-	char * data;
+	volatile char * data;
 	uint i;
 	char res = 0;
 	int cpu;
 	pgd_t *pgd;
 	pud_t *pud;
 	pmd_t *pmd;
-	pte_t *pte, *pte_nl;
+	volatile pte_t *pte, *pte_nl;
 
 	struct mm_struct *mm;
 	struct perf_event *cache_miss;
@@ -112,8 +112,8 @@ static int __init bench_init(void)
 		__flush_tlb_single((uintptr_t)data);
 
 		/* Flush both PTE cachelines */
-		clflush_cache_range(pte, 1);
-		clflush_cache_range(pte_nl, 1);
+		clflush_cache_range((void*)pte, 1);
+		clflush_cache_range((void*)pte_nl, 1);
 
 		/* Access data to trigger page walk */
 		res ^= data[0];
@@ -145,7 +145,7 @@ out_putmm:
 	mmput(mm);
 out_free:
 	pr_info("Freeing allocated memory\n");
-	vfree(data);
+	vfree((void*)data);
 out:
 	return 0;
 }
