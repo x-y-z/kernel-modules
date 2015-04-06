@@ -17,6 +17,9 @@ MODULE_LICENSE("GPL");
 static uint iterations = 1000;
 module_param(iterations, uint, S_IRUGO);
 
+static bool tlb_flush = 1;
+module_param(tlb_flush, bool, S_IRUGO);
+
 static struct perf_event_attr cache_miss_event_attr = {
         .type           = PERF_TYPE_HARDWARE,
         .config         = PERF_COUNT_HW_CACHE_MISSES,
@@ -111,7 +114,8 @@ static int __init bench_init(void)
 
 	for (i = 0; i < iterations; ++i) {
 		/* Flush TLB entry */
-		__flush_tlb_single((uintptr_t)data);
+		if (tlb_flush)
+			__flush_tlb_single((uintptr_t)data);
 
 		/* Flush both PTE cachelines */
 		clflush_cache_range((void*)pte, 1);
