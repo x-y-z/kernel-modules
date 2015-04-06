@@ -42,31 +42,43 @@ static int __init bench_init(void)
 
 	u64 cache_misses_begin, cache_misses_end, enabled, running;
 
-	printk(KERN_INFO "Allocating memory\n");
+	pr_info("Allocating memory\n");
 	data = vzalloc(PAGE_SIZE);
-	if (!data)
+	if (!data) {
+		pr_err("Failed to allocate memory");
 		goto out;
+	}
 
 	/* Calculate PTE locations */
 	mm = get_task_mm(current);
-	if (!mm)
+	if (!mm) {
+		pr_err("Failed to get task mm\n");
 		goto out_free;
+	}
 
 	pgd = pgd_offset(current->mm, (uintptr_t)data);
-	if (pgd_none(*pgd) || pgd_bad(*pgd))
+	if (pgd_none(*pgd) || pgd_bad(*pgd)) {
+		pr_err("Bad or missing PGD\n");
 		goto out_putmm;
+	}
 
 	pud = pud_offset(pgd, (uintptr_t)data);
-	if (pud_none(*pud) || pud_bad(*pud))
+	if (pud_none(*pud) || pud_bad(*pud)) {
+		pr_err("Bad or missing PUD\n");
 		goto out_putmm;
+	}
 
 	pmd = pmd_offset(pud, (uintptr_t)data);
-	if (pmd_none(*pmd) || pmd_bad(*pmd))
+	if (pmd_none(*pmd) || pmd_bad(*pmd)) {
+		pr_err("Bad or missing PMD\n");
 		goto out_putmm;
+	}
 
 	pte = pte_offset_map(pmd, (uintptr_t)data);
-	if (!pte || pte_none(*pte))
+	if (!pte || pte_none(*pte)) {
+		pr_err("Bad or missing PTE\n");
 		goto out_putmm;
+	}
 
 	/* 2^6 = 64 is the size of cacheline,
 	 * >> 7 means that the pte_nl is on a 'buddy' line */
@@ -75,16 +87,20 @@ static int __init bench_init(void)
 		pte_nl = pte_offset_map(pmd, (uintptr_t)(data + 8 * PAGE_SIZE));
 	else
 		pte_nl = pte_offset_map(pmd, (uintptr_t)(data - 8 * PAGE_SIZE));
-	if (!pte_nl || pte_none(*pte_nl))
+	if (!pte_nl || pte_none(*pte_nl)) {
+		pr_err("Bad or missing PTE_NL\n");
 		goto out_unmappte;
+	}
 
 
 	cpu = smp_processor_id();
 	/* Setup TLB miss, and cache miss counters */
 	cache_miss = perf_event_create_kernel_counter(&cache_miss_event_attr,
 		cpu, NULL, NULL, NULL);
-	if (IS_ERR(cache_miss))
+	if (IS_ERR(cache_miss)) {
+		pr_err("Failed to create kernel counter\n");
 		goto out_unmappte_nl;
+	}
 
 	/* Disable interrupts */
 	local_irq_save(irqs);
@@ -116,7 +132,7 @@ static int __init bench_init(void)
 	cache_misses_end = perf_event_read_value(cache_miss, &enabled, &running);
 
 	/* Print results */
-	printk(KERN_INFO "Cache misses: %llu (%llu - %llu)\n",
+	pr_info("Cache misses: %llu (%llu - %llu)\n",
 		cache_misses_end - cache_misses_begin,
 		cache_misses_end, cache_misses_begin);
 
@@ -135,7 +151,7 @@ out_unmappte:
 out_putmm:
 	mmput(mm);
 out_free:
-	printk(KERN_INFO "Freeing allocated memory\n");
+	pr_info("Freeing allocated memory\n");
 	vfree(data);
 out:
 	return 0;
@@ -143,7 +159,7 @@ out:
 
 static void __exit bench_exit(void)
 {
-	printk(KERN_ALERT "Goodbye, world\n");
+	pr_info("Goodbye, world\n");
 }
 
 module_init(bench_init);
