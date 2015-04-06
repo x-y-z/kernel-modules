@@ -21,11 +21,11 @@ static bool tlb_flush = 1;
 module_param(tlb_flush, bool, S_IRUGO);
 
 static struct perf_event_attr cache_miss_event_attr = {
-        .type           = PERF_TYPE_HARDWARE,
-        .config         = PERF_COUNT_HW_CACHE_MISSES,
-        .size           = sizeof(struct perf_event_attr),
-        .pinned         = 1,
-        .disabled       = 1,
+	.type           = PERF_TYPE_HW_CACHE,
+	.config         = PERF_COUNT_HW_CACHE_L1D | PERF_COUNT_HW_CACHE_OP_READ << 8 | PERF_COUNT_HW_CACHE_RESULT_MISS << 16,
+	.size           = sizeof(struct perf_event_attr),
+	.pinned         = 1,
+	.disabled       = 1,
 };
 
 static int __init bench_init(void)
