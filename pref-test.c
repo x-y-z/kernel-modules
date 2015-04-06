@@ -51,7 +51,9 @@ static int __init fake_init(void)
 	if (!pte || pte_none(*pte))
 		goto out_putmm;
 
-	if ((((uintptr_t)data + 8 * PAGE_SIZE) >> PMD_SHIFT) ==
+	/* 2^6 = 64 is the size of cacheline,
+	 * >> 7 means that the pte_nl is on a 'buddy' line */
+	if ((((uintptr_t)data + 8 * PAGE_SIZE) >> 7) ==
 	    ((uintptr_t)data >> PMD_SHIFT))
 		pte_nl = pte_offset_map(pmd, (uintptr_t)(data + 8 * PAGE_SIZE));
 	else
