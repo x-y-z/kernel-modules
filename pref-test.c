@@ -31,6 +31,7 @@ static int __init bench_init(void)
 	uint i;
 	char res = 0;
 	int cpu;
+	ulong irqs;
 	pgd_t *pgd;
 	pud_t *pud;
 	pmd_t *pmd;
@@ -104,6 +105,7 @@ static int __init bench_init(void)
 
 	perf_event_enable(cache_miss);
 
+	local_irq_save(irqs);
 	/* Read TLB miss and Cache miss counters */
 	cache_misses_begin = perf_event_read_value(cache_miss, &enabled, &running);
 
@@ -124,6 +126,7 @@ static int __init bench_init(void)
 
 	/* Read the counters again */
 	cache_misses_end = perf_event_read_value(cache_miss, &enabled, &running);
+	local_irq_restore(irqs);
 
 	/* Print results */
 	pr_info("Cache misses: %llu (%llu - %llu)\n",
