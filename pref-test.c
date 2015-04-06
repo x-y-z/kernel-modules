@@ -4,6 +4,9 @@
 #include <linux/sched.h>
 #include <linux/vmalloc.h>
 
+#include <asm/cacheflush.h>
+#include <asm/tlbflush.h>
+
 #ifndef CONFIG_X86
 # error "This module only works on X86"
 #endif
@@ -70,13 +73,17 @@ static int __init fake_init(void)
 
 	for (i = 0; i < iterations; ++i) {
 		/* Flush TLB entry */
+		__flush_tlb_single((uintptr_t)data);
 
 		/* Flush both PTE cachelines */
+		clflush_cache_range(pte, 1);
+		clflush_cache_range(pte_nl, 1);
 
 		/* Access data to trigger page walk */
 		res ^= data[0];
 
 		/* Access PTE in second cacheline */
+		res ^= pte_nl->pte;
 	}
 
 	/* Read the counters again */
