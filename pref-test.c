@@ -16,7 +16,7 @@ MODULE_LICENSE("GPL");
 static uint iterations = 1000;
 module_param(iterations, uint, S_IRUGO);
 
-static int __init fake_init(void)
+static int __init bench_init(void)
 {
 	char * data;
 	uint i;
@@ -108,10 +108,10 @@ out:
 	return 0;
 }
 
-static void __exit fake_exit(void)
+static void __exit bench_exit(void)
 {
 	printk(KERN_ALERT "Goodbye, world\n");
 }
 
-module_init(fake_init);
-module_exit(fake_exit);
+module_init(bench_init);
+module_exit(bench_exit);
