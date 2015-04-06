@@ -30,7 +30,6 @@ static int __init bench_init(void)
 	char * data;
 	uint i;
 	char res = 0;
-	ulong irqs;
 	int cpu;
 	pgd_t *pgd;
 	pud_t *pud;
@@ -93,20 +92,15 @@ static int __init bench_init(void)
 	}
 
 
-	cpu = smp_processor_id();
+	/* Disable interrupts */
+	cpu = get_cpu();
 	/* Setup TLB miss, and cache miss counters */
 	cache_miss = perf_event_create_kernel_counter(&cache_miss_event_attr,
 		cpu, NULL, NULL, NULL);
 	if (IS_ERR(cache_miss)) {
 		pr_err("Failed to create kernel counter\n");
-		goto out_unmappte_nl;
+		goto out_putcpu;
 	}
-
-	/* Disable interrupts */
-	local_irq_save(irqs);
-
-	if (smp_processor_id() != cpu)
-		perf_pmu_migrate_context(cache_miss->pmu, cpu, smp_processor_id());
 
 	perf_event_enable(cache_miss);
 
@@ -139,12 +133,11 @@ static int __init bench_init(void)
 	/* Clean up counters */
 	perf_event_disable(cache_miss);
 
-out_irq_enable:
-	/* Enable interrupts */
-	local_irq_restore(irqs);
 	perf_event_release_kernel(cache_miss);
 
-out_unmappte_nl:
+out_putcpu:
+	/* Enable interrupts */
+	put_cpu();
 	pte_unmap(pte_nl);
 out_unmappte:
 	pte_unmap(pte);
