@@ -17,12 +17,13 @@ MODULE_LICENSE("GPL");
 static uint iterations = 1000;
 module_param(iterations, uint, S_IRUGO);
 
-static bool tlb_flush = 1;
-module_param(tlb_flush, bool, S_IRUGO);
+static bool is_tlb_flush = 1;
+module_param(is_tlb_flush, bool, S_IRUGO);
 
-static struct perf_event_attr cache_miss_event_attr = {
-	.type           = PERF_TYPE_HW_CACHE,
-	.config         = PERF_COUNT_HW_CACHE_L1D | PERF_COUNT_HW_CACHE_OP_READ << 8 | PERF_COUNT_HW_CACHE_RESULT_MISS << 16,
+static struct perf_event_attr tlb_flush_event_attr = {
+	.type           = PERF_TYPE_RAW,
+	.config         = 0x01ae, /* STLB Flush: 0x20bd, DTLB Flush:0x01bd,
+								 ITLB Flush: 0x01ae */
 	.size           = sizeof(struct perf_event_attr),
 	.pinned         = 1,
 	.disabled       = 1,
@@ -35,15 +36,16 @@ static int __init bench_init(void)
 	char res = 0;
 	int cpu;
 	ulong irqs;
-	pgd_t *pgd;
-	pud_t *pud;
-	pmd_t *pmd;
-	volatile pte_t *pte, *pte_nl;
 
-	struct mm_struct *mm;
-	struct perf_event *cache_miss;
+	struct perf_event *tlb_flush;
 
-	u64 cache_misses_begin, cache_misses_end, enabled, running;
+	u64 tlb_flushes_begin, tlb_flushes_end, enabled, running;
+
+	unsigned long cr4;
+
+	cr4 = native_read_cr4();
+
+	pr_info("CR4 is: %lx\n", cr4);
 
 	pr_info("Allocating memory\n");
 	data = vzalloc(PAGE_SIZE);
@@ -52,107 +54,57 @@ static int __init bench_init(void)
 		goto out;
 	}
 
-	/* Calculate PTE locations */
-	mm = get_task_mm(current);
-	if (!mm) {
-		pr_err("Failed to get task mm\n");
-		goto out_free;
-	}
+	/* Access data to put it inside TLB  */
+	res = data[0];
 
-	pgd = pgd_offset(current->mm, (uintptr_t)data);
-	if (pgd_none(*pgd) || pgd_bad(*pgd)) {
-		pr_err("Bad or missing PGD\n");
-		goto out_putmm;
-	}
-
-	pud = pud_offset(pgd, (uintptr_t)data);
-	if (pud_none(*pud) || pud_bad(*pud)) {
-		pr_err("Bad or missing PUD\n");
-		goto out_putmm;
-	}
-
-	pmd = pmd_offset(pud, (uintptr_t)data);
-	if (pmd_none(*pmd) || pmd_bad(*pmd)) {
-		pr_err("Bad or missing PMD\n");
-		goto out_putmm;
-	}
-
-	pte = pte_offset_map(pmd, (uintptr_t)data);
-	if (!pte || pte_none(*pte)) {
-		pr_err("Bad or missing PTE\n");
-		goto out_putmm;
-	}
-
-	/* 2^6 = 64 is the size of cacheline,
-	 * >> 7 means that the pte_nl is on a 'buddy' line */
-	if ((((uintptr_t)data + 8 * PAGE_SIZE) >> 7) ==
-	    ((uintptr_t)data >> PMD_SHIFT))
-		pte_nl = pte_offset_map(pmd, (uintptr_t)(data + 8 * PAGE_SIZE));
-	else
-		pte_nl = pte_offset_map(pmd, (uintptr_t)(data - 8 * PAGE_SIZE));
-	if (!pte_nl) {
-		pr_err("Bad or missing PTE_NL\n");
-		goto out_unmappte;
-	}
-
-	pr_info("PTE: %p\n", pte);
-	pr_info("PTE_NL: %p\n", pte_nl);
 
 	/* Disable interrupts */
 	cpu = get_cpu();
 	/* Setup TLB miss, and cache miss counters */
-	cache_miss = perf_event_create_kernel_counter(&cache_miss_event_attr,
+	tlb_flush = perf_event_create_kernel_counter(&tlb_flush_event_attr,
 		cpu, NULL, NULL, NULL);
-	if (IS_ERR(cache_miss)) {
+	if (IS_ERR(tlb_flush)) {
 		pr_err("Failed to create kernel counter\n");
 		goto out_putcpu;
 	}
 
-	perf_event_enable(cache_miss);
+	perf_event_enable(tlb_flush);
 
 	local_irq_save(irqs);
 	/* Read TLB miss and Cache miss counters */
-	cache_misses_begin = perf_event_read_value(cache_miss, &enabled, &running);
+	tlb_flushes_begin = perf_event_read_value(tlb_flush, &enabled, &running);
 
 	for (i = 0; i < iterations; ++i) {
 		/* Flush TLB entry */
-		if (tlb_flush)
-			__flush_tlb_single((uintptr_t)data);
-
-		/* Flush both PTE cachelines */
-		clflush_cache_range((void*)pte, 1);
-		clflush_cache_range((void*)pte_nl, 1);
+		if (is_tlb_flush)
+			/*__flush_tlb_single((uintptr_t)data);*/
+			__flush_tlb_all();
 
 		/* Access data to trigger page walk */
 		res ^= data[0];
 
-		/* Access PTE in second cacheline */
-		res ^= pte_nl->pte;
 	}
 
 	/* Read the counters again */
-	cache_misses_end = perf_event_read_value(cache_miss, &enabled, &running);
+	tlb_flushes_end = perf_event_read_value(tlb_flush, &enabled, &running);
 	local_irq_restore(irqs);
 
 	/* Print results */
-	pr_info("Cache misses: %llu (%llu - %llu)\n",
-		cache_misses_end - cache_misses_begin,
-		cache_misses_end, cache_misses_begin);
+	pr_info("TLB Flushes: %llu (%llu - %llu)\n",
+		tlb_flushes_end - tlb_flushes_begin,
+		tlb_flushes_end, tlb_flushes_begin);
 
 	/* Clean up counters */
-	perf_event_disable(cache_miss);
+	perf_event_disable(tlb_flush);
 
-	perf_event_release_kernel(cache_miss);
+	perf_event_release_kernel(tlb_flush);
 
 out_putcpu:
 	/* Enable interrupts */
 	put_cpu();
-	pte_unmap(pte_nl);
-out_unmappte:
-	pte_unmap(pte);
-out_putmm:
-	mmput(mm);
-out_free:
+/*out_unmappte:*/
+/*out_putmm:*/
+/*out_free:*/
 	pr_info("Freeing allocated memory\n");
 	vfree((void*)data);
 out:
