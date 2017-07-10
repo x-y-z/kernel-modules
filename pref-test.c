@@ -13,7 +13,7 @@
 
 MODULE_LICENSE("GPL");
 
-static uint nid_to_scan = 1;
+static uint nid_to_scan = 0;
 module_param(nid_to_scan, uint, S_IRUGO);
 
 struct pg_scan_control {
@@ -185,6 +185,7 @@ int pageblock_scan_node(int nid)
 	int err = 0;
 
 	cc.nid = nid;
+	cc.last_migratetype = -1;
 
 	for (zoneid = 0; zoneid < MAX_NR_ZONES; zoneid++) {
 		zone = &scan_node->node_zones[zoneid];
